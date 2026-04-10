@@ -20,8 +20,9 @@ function R(s) { return s[Math.floor(Math.random() * s.length)]; }
 function generateReplies(title, body) {
   const count = Math.floor(Math.random() * 7) + 8;
   const names = ["\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF8A\uFF9E\uFF76\uFF70","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF8A\uFF9E\uFF76\uFF70","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF71\uFF8E\uFF70","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF71\uFF8E\uFF70","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF8A\uFF9E\uFF76\uFF70","DTI\u5229\u7528\u8005","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF8A\uFF9E\uFF76\uFF70","\u30FE(\uFF9F\u0434\uFF9F)\uFF89\u309B\uFF71\uFF8E\uFF70"];
-  const now = new Date();
-  const dow = ["\u65E5","\u6708","\u706B","\u6C34","\u6728","\u91D1","\u571F"][now.getDay()];
+  // Use JST (UTC+9) since this is a Japanese BBS
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const dow = ["\u65E5","\u6708","\u706B","\u6C34","\u6728","\u91D1","\u571F"][now.getUTCDay()];
   const base = now.getFullYear() + "\u5E74" + String(now.getMonth()+1).padStart(2,"0") + "\u6708" + String(now.getDate()).padStart(2,"0") + "\u65E5(" + dow + ")";
 
   const src = title + " " + body;
@@ -120,8 +121,9 @@ function generateReplies(title, body) {
   }
 
   function fmtDate(d) {
-    const dw = ["\u65E5","\u6708","\u706B","\u6C34","\u6728","\u91D1","\u571F"][d.getDay()];
-    return d.getFullYear() + "\u5E74" + String(d.getMonth()+1).padStart(2,"0") + "\u6708" + String(d.getDate()).padStart(2,"0") + "\u65E5(" + dw + ") " + String(d.getHours()).padStart(2,"0") + "\u6642" + String(d.getMinutes()).padStart(2,"0") + "\u5206" + String(d.getSeconds()).padStart(2,"0") + "\u79D2";
+    // d already has JST offset baked in, so use getUTC* to read correct JST values
+    const dw = ["\u65E5","\u6708","\u706B","\u6C34","\u6728","\u91D1","\u571F"][d.getUTCDay()];
+    return d.getUTCFullYear() + "\u5E74" + String(d.getUTCMonth()+1).padStart(2,"0") + "\u6708" + String(d.getUTCDate()).padStart(2,"0") + "\u65E5(" + dw + ") " + String(d.getUTCHours()).padStart(2,"0") + "\u6642" + String(d.getUTCMinutes()).padStart(2,"0") + "\u5206" + String(d.getUTCSeconds()).padStart(2,"0") + "\u79D2";
   }
 
   const replies = [];
