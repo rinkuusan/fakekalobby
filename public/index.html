@@ -186,11 +186,13 @@
 </div>
 <script>
 let cur=null,allR=[];
+// API base: empty for same-origin (local dev), or full Worker URL for production
+const API=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'':'https://fakekalobby-api.rinkuusan.workers.dev';
 function go(p){document.querySelectorAll('.pg').forEach(e=>e.classList.remove('on'));const el=document.getElementById('p-'+p);if(el)el.classList.add('on');window.scrollTo(0,0);if(p==='list')loadPub();if(p==='pastlogs')loadLogs();fd();}
 function uc(id,mx){const e=document.getElementById(id),c=document.getElementById(id+'-c');if(e&&c)c.textContent=e.value.length+'/'+mx;}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-async function fd(){try{const r=await fetch('/api/counter');const d=await r.json();document.getElementById('deficit').textContent='¥'+d.deficit.toLocaleString();}catch(e){}}
+async function fd(){try{const r=await fetch(API+'/api/counter');const d=await r.json();document.getElementById('deficit').textContent='¥'+d.deficit.toLocaleString();}catch(e){}}
 function stag(i,n){return 300+Math.random()*800+(i>2&&i<n-2?200:0);}
 
 function makePostHTML(p) {
@@ -211,12 +213,12 @@ async function doGen(){
   document.getElementById('tv-ft').style.display='none';document.getElementById('tv-sp').style.display='none';document.getElementById('tv-rb').style.display='none';
   document.getElementById('tv-lb').style.display='';document.getElementById('tv-gt').style.display='';allR=[];
   try{
-    const res=await fetch('/api/bbs/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,momentum:'普通'})});
+    const res=await fetch(API+'/api/bbs/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,momentum:'普通'})});
     const data=await res.json();if(!res.ok)throw new Error(data.error||'error');
     allR=data.replies||[];
     for(let i=0;i<allR.length;i++){await sleep(stag(i,allR.length));addP(allR[i]);}
     cur={title:t,body:b,replies:allR};
-    fetch('/api/bbs/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,replies:allR,isPublic:true})});
+    fetch(API+'/api/bbs/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,replies:allR,isPublic:true})});
   }catch(e){document.getElementById('tv-gt').innerHTML='<span style="color:#CC0000">エラー: '+esc(e.message)+'</span>';}
   document.getElementById('tv-lb').style.display='none';document.getElementById('tv-gt').style.display='none';
   document.getElementById('tv-ft').style.display='flex';document.getElementById('tv-sp').style.display='';document.getElementById('tv-rb').style.display='flex';
@@ -234,7 +236,7 @@ async function doReply(){
   document.getElementById('tv-lb').style.display='';document.getElementById('tv-gt').style.display='';
   addP({number:n,name:'ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ',date:new Date().toLocaleString('ja-JP'),id:'USER',body:txt});
   try{
-    const res=await fetch('/api/bbs/continue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:cur.title,body:cur.body,userReply:{number:n,text:txt},momentum:'普通',currentTotal:n})});
+    const res=await fetch(API+'/api/bbs/continue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:cur.title,body:cur.body,userReply:{number:n,text:txt},momentum:'普通',currentTotal:n})});
     const data=await res.json();
     for(let i=0;i<(data.replies||[]).length;i++){await sleep(stag(i,data.replies.length));addP(data.replies[i]);allR.push(data.replies[i]);}
     document.getElementById('rb-txt').value='';
@@ -251,7 +253,7 @@ async function loadPub(){
     ts.forEach(t=>{const d=document.createElement('div');d.className='li-i';d.onclick=()=>viewT(t);d.innerHTML=`<div><div class="li-t">${esc(t.title)}</div><div class="li-m">${t.createdAt||''}</div></div><div class="li-c">(${(t.replies||[]).length+1})</div>`;el.appendChild(d);});
   }catch(e){}}
 async function loadLogs(){
-  try{const r=await fetch('/api/bbs/logs');const logs=await r.json();
+  try{const r=await fetch(API+'/api/bbs/logs');const logs=await r.json();
     const el=document.getElementById('pll'),em=document.getElementById('ple');
     if(!logs.length){el.style.display='none';em.style.display='';return;}
     em.style.display='none';el.style.display='';el.innerHTML='';
