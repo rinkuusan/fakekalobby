@@ -178,14 +178,15 @@ let totalCost = 12345;
 const rowTo = (r) => ({
   id: r.id, title: r.title, body: r.body,
   replies: JSON.parse(r.replies || "[]"),
+  opName: r.opName || "", opId: r.opId || "",
   isPublic: !!r.isPublic, isSafetyMode: !!r.isSafetyMode, isSensitive: !!r.isSensitive,
   createdAt: r.createdAt,
 });
 function d1Store(db) {
   return {
     async save(t) {
-      const r = await db.prepare("INSERT INTO threads (title,body,replies,isPublic,isSafetyMode,isSensitive,createdAt) VALUES (?,?,?,?,?,?,?)")
-        .bind(t.title, t.body, JSON.stringify(t.replies || []), t.isPublic ? 1 : 0, t.isSafetyMode ? 1 : 0, t.isSensitive ? 1 : 0, new Date().toISOString())
+      const r = await db.prepare("INSERT INTO threads (title,body,replies,opName,opId,isPublic,isSafetyMode,isSensitive,createdAt) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(t.title, t.body, JSON.stringify(t.replies || []), t.opName || "", t.opId || "", t.isPublic ? 1 : 0, t.isSafetyMode ? 1 : 0, t.isSensitive ? 1 : 0, new Date().toISOString())
         .run();
       return r.meta.last_row_id;
     },

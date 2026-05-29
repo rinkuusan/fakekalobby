@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS threads (
   title        TEXT    NOT NULL,
   body         TEXT    NOT NULL,
   replies      TEXT    NOT NULL DEFAULT '[]',
+  opName       TEXT    NOT NULL DEFAULT '',
+  opId         TEXT    NOT NULL DEFAULT '',
   isPublic     INTEGER NOT NULL DEFAULT 0,
   isSafetyMode INTEGER NOT NULL DEFAULT 0,
   isSensitive  INTEGER NOT NULL DEFAULT 0,

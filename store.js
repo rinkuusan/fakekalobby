@@ -17,15 +17,22 @@ try {
     title        TEXT    NOT NULL,
     body         TEXT    NOT NULL,
     replies      TEXT    NOT NULL DEFAULT '[]',
+    opName       TEXT    NOT NULL DEFAULT '',
+    opId         TEXT    NOT NULL DEFAULT '',
     isPublic     INTEGER NOT NULL DEFAULT 0,
     isSafetyMode INTEGER NOT NULL DEFAULT 0,
     isSensitive  INTEGER NOT NULL DEFAULT 0,
     createdAt    TEXT    NOT NULL
   )`);
+  // Migrate older DBs that predate the opName/opId columns
+  const cols = db.prepare("PRAGMA table_info(threads)").all().map((c) => c.name);
+  if (!cols.includes("opName")) db.exec("ALTER TABLE threads ADD COLUMN opName TEXT NOT NULL DEFAULT ''");
+  if (!cols.includes("opId")) db.exec("ALTER TABLE threads ADD COLUMN opId TEXT NOT NULL DEFAULT ''");
 
   const row = (r) => r && {
     id: r.id, title: r.title, body: r.body,
     replies: JSON.parse(r.replies || "[]"),
+    opName: r.opName || "", opId: r.opId || "",
     isPublic: !!r.isPublic, isSafetyMode: !!r.isSafetyMode, isSensitive: !!r.isSensitive,
     createdAt: r.createdAt,
   };
@@ -34,8 +41,8 @@ try {
     backend: "node:sqlite",
     saveThread(t) {
       const info = db
-        .prepare("INSERT INTO threads (title,body,replies,isPublic,isSafetyMode,isSensitive,createdAt) VALUES (?,?,?,?,?,?,?)")
-        .run(t.title, t.body, JSON.stringify(t.replies || []),
+        .prepare("INSERT INTO threads (title,body,replies,opName,opId,isPublic,isSafetyMode,isSensitive,createdAt) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(t.title, t.body, JSON.stringify(t.replies || []), t.opName || "", t.opId || "",
           t.isPublic ? 1 : 0, t.isSafetyMode ? 1 : 0, t.isSensitive ? 1 : 0,
           new Date().toISOString());
       return Number(info.lastInsertRowid);

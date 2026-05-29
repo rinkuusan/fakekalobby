@@ -232,8 +232,8 @@ app.post("/api/bbs/continue", async (req, res) => {
 
 // Save thread log
 app.post("/api/bbs/logs", (req, res) => {
-  const { title, body, replies, isPublic, isSafetyMode, isSensitive } = req.body;
-  const id = store.saveThread({ title, body, replies: replies || [], isPublic: !!isPublic, isSafetyMode, isSensitive });
+  const { title, body, replies, isPublic, isSafetyMode, isSensitive, opName, opId } = req.body;
+  const id = store.saveThread({ title, body, replies: replies || [], isPublic: !!isPublic, isSafetyMode, isSensitive, opName, opId });
   res.json({ id });
 });
 
