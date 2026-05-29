@@ -246,7 +246,7 @@ async function doReply(){
 function doShareBtn(){alert('共有リンクをコピーしました（デモ）');}
 async function loadPub(){
   const q=(document.getElementById('sq')?.value||'').trim();
-  try{const r=await fetch(`/api/bbs/public-threads?q=${encodeURIComponent(q)}`);const d=await r.json();const ts=d.threads||[];
+  try{const r=await fetch(API+`/api/bbs/public-threads?q=${encodeURIComponent(q)}`);const d=await r.json();const ts=d.threads||[];
     const el=document.getElementById('ll'),em=document.getElementById('le');
     if(!ts.length){el.style.display='none';em.style.display='';em.textContent=q?`「${q}」に一致するスレが見つかりませんでした。`:'公開スレッドはまだありません。';return;}
     em.style.display='none';el.style.display='';el.innerHTML='';
