@@ -123,6 +123,8 @@
       <h2>新規スレッド作成</h2>
       <form class="ff" onsubmit="doGen();return false">
         <div class="fr"><span class="fl">題名</span><div class="fw"><input id="inp-t" type="text" class="fi" placeholder="スレッドのタイトル" maxlength="50" oninput="uc('inp-t',50)"><div class="cc" id="inp-t-c">/50</div></div></div>
+        <div class="fr"><span class="fl">投稿者</span><div class="fw"><input id="inp-name" type="text" class="fi" placeholder="（省略可）" maxlength="30"></div></div>
+        <div class="fr"><span class="fl">メール</span><div class="fw"><input id="inp-mail" type="text" class="fi" placeholder="（省略可・「id:文字」でID表示）" maxlength="30"></div></div>
         <div class="fr top"><span class="fl">本文</span><div class="fw"><textarea id="inp-b" class="fta" placeholder="書き込む内容を入力してください..." maxlength="1000" oninput="uc('inp-b',1000)"></textarea><div class="cc" id="inp-b-c">/1000</div></div></div>
         <div class="sr"><button type="submit" class="bs" id="btn-g">新規投稿</button></div>
       </form>
@@ -188,6 +190,9 @@
 let cur=null,allR=[];
 // API base: empty for same-origin (local dev), or full Worker URL for production
 const API=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'':'https://fakekalobby-api.rinkuusan.workers.dev';
+const DEFAULT_NAME='ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ';
+function parseId(mail){const m=(mail||'').match(/^\s*id:(.+)$/i);return m?m[1].trim().slice(0,20):'';}
+function renderOP(name,id,ds,body){return `<dl class="post"><dt>1<font size="-1">投稿者：</font><span class="pname">${esc(name||DEFAULT_NAME)}</span> <span class="pmeta">　投稿日：${ds}${id?` ID:${esc(id)}`:''}</span></dt><dd>${esc(body)}</dd></dl>`;}
 function go(p){document.querySelectorAll('.pg').forEach(e=>e.classList.remove('on'));const el=document.getElementById('p-'+p);if(el)el.classList.add('on');window.scrollTo(0,0);if(p==='list')loadPub();if(p==='pastlogs')loadLogs();fd();}
 function uc(id,mx){const e=document.getElementById(id),c=document.getElementById(id+'-c');if(e&&c)c.textContent=e.value.length+'/'+mx;}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -202,13 +207,14 @@ function makePostHTML(p) {
 
 async function doGen(){
   const t=document.getElementById('inp-t').value.trim(),b=document.getElementById('inp-b').value.trim();
+  const opName=document.getElementById('inp-name').value.trim(),opId=parseId(document.getElementById('inp-mail').value);
   if(!t){alert('タイトルを入力してください。');return;}if(!b){alert('本文を入力してください。');return;}
   document.getElementById('btn-g').disabled=true;go('thread');
   document.getElementById('tv-t').textContent=t;
   // OP
   const now=new Date(),dow=['日','月','火','水','木','金','土'][now.getDay()];
   const ds=`${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日(${dow}) ${String(now.getHours()).padStart(2,'0')}時${String(now.getMinutes()).padStart(2,'0')}分${String(now.getSeconds()).padStart(2,'0')}秒`;
-  document.getElementById('tv-op').innerHTML=`<dl class="post"><dt>1<font size="-1">投稿者：</font><span class="pname">ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ</span> <span class="pmeta">\u3000投稿日：${ds}</span></dt><dd>${esc(b)}</dd></dl>`;
+  document.getElementById('tv-op').innerHTML=renderOP(opName,opId,ds,b);
   document.getElementById('tv-posts').innerHTML='';
   document.getElementById('tv-ft').style.display='none';document.getElementById('tv-sp').style.display='none';document.getElementById('tv-rb').style.display='none';
   document.getElementById('tv-lb').style.display='';document.getElementById('tv-gt').style.display='';allR=[];
@@ -217,8 +223,8 @@ async function doGen(){
     const data=await res.json();if(!res.ok)throw new Error(data.error||'error');
     allR=data.replies||[];
     for(let i=0;i<allR.length;i++){await sleep(stag(i,allR.length));addP(allR[i]);}
-    cur={title:t,body:b,replies:allR};
-    fetch(API+'/api/bbs/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,replies:allR,isPublic:true})});
+    cur={title:t,body:b,replies:allR,opName,opId};
+    fetch(API+'/api/bbs/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,body:b,replies:allR,isPublic:true,opName,opId})});
   }catch(e){document.getElementById('tv-gt').innerHTML='<span style="color:#CC0000">エラー: '+esc(e.message)+'</span>';}
   document.getElementById('tv-lb').style.display='none';document.getElementById('tv-gt').style.display='none';
   document.getElementById('tv-ft').style.display='flex';document.getElementById('tv-sp').style.display='';document.getElementById('tv-rb').style.display='flex';
@@ -264,7 +270,7 @@ function viewT(t){
   document.getElementById('tv-t').textContent=t.title;
   const now=new Date(),dow=['日','月','火','水','木','金','土'][now.getDay()];
   const ds=`${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日(${dow})`;
-  document.getElementById('tv-op').innerHTML=`<dl class="post"><dt>1<font size="-1">投稿者：</font><span class="pname">ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ</span> <span class="pmeta">\u3000投稿日：${ds}</span></dt><dd>${esc(t.body)}</dd></dl>`;
+  document.getElementById('tv-op').innerHTML=renderOP(t.opName,t.opId,ds,t.body);
   const pc=document.getElementById('tv-posts');pc.innerHTML='';
   (t.replies||[]).forEach(p=>{pc.insertAdjacentHTML('beforeend',makePostHTML(p));});
   document.getElementById('tv-lb').style.display='none';document.getElementById('tv-gt').style.display='none';
