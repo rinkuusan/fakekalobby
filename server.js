@@ -7,50 +7,29 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ===== In-memory store =====
-const threads = new Map(); // id -> {title, body, replies, isPublic, isSafetyMode, isSensitive, createdAt}
-let nextId = 1;
+// ===== Persistent store (node:sqlite -> data/threads.db, or in-memory fallback) =====
+const store = require("./store");
 let totalCost = 12345; // mock
 
-// ===== Ollama config =====
-const OLLAMA_URL = "http://localhost:11434/api/generate";
-const MODEL = "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF";
-
-// ===== Context-aware 2ch reply engine =====
+// ===== Reply engine (template-based kalobby/amezor resident simulator) =====
 async function generateReplies(title, body, momentum, residentType) {
   const numReplies = Math.floor(Math.random() * 7) + 8;
   return generateFallbackReplies(title, body, numReplies);
 }
 
-function formatReplies(parsed) {
-  const names = ["風吹けば名無し", "名無しさん", "名無しさん＠お腹いっぱい。", "名無し募集中。。。"];
-  const now = new Date();
-  const dow = ["日","月","火","水","木","金","土"][now.getDay()];
-  const base = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,"0")}/${String(now.getDate()).padStart(2,"0")}(${dow})`;
-
-  return parsed.slice(0, 20).map((r, i) => {
-    const h = String(now.getHours()).padStart(2, "0");
-    const m = String(now.getMinutes()).padStart(2, "0");
-    const s = String(Math.min(59, now.getSeconds() + i * 3 + Math.floor(Math.random() * 10))).padStart(2, "0");
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let id = ""; for (let j = 0; j < 9; j++) id += chars[Math.floor(Math.random() * chars.length)];
-    return {
-      number: i + 2,
-      name: r.name || names[Math.floor(Math.random() * names.length)],
-      date: `${base} ${h}時${m}分${s}秒`,
-      id: id,
-      body: r.body || r.text || ""
-    };
-  });
-}
+// (removed unused formatReplies(): replies are produced by generateFallbackReplies)
 
 function generateFallbackReplies(title, body, count) {
   const R = s => s[Math.floor(Math.random() * s.length)];
   // amezor-x / kalobby style names
   const names = ["ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ","ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ","ヾ(ﾟдﾟ)ﾉ゛ｱﾎｰ","ヾ(ﾟдﾟ)ﾉ゛ｱﾎｰ","ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ","DTI利用者","ヾ(ﾟдﾟ)ﾉ゛ﾊﾞｶｰ","ヾ(ﾟдﾟ)ﾉ゛ｱﾎｰ"];
   const now = new Date();
-  const dow = ["日","月","火","水","木","金","土"][now.getDay()];
-  const base = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,"0")}月${String(now.getDate()).padStart(2,"0")}日(${dow})`;
+  const dowArr = ["日","月","火","水","木","金","土"];
+  const fmtDate = (d) => `${d.getFullYear()}年${String(d.getMonth()+1).padStart(2,"0")}月${String(d.getDate()).padStart(2,"0")}日(${dowArr[d.getDay()]}) ${String(d.getHours()).padStart(2,"0")}時${String(d.getMinutes()).padStart(2,"0")}分${String(d.getSeconds()).padStart(2,"0")}秒`;
+  // Forward-moving timestamps (pasokaso pace): each reply arrives 5-50min after the previous one
+  const postTimes = [];
+  let cursor = now.getTime();
+  for (let _i = 0; _i < count; _i++) { cursor += ((5 + Math.floor(Math.random()*45))*60 + Math.floor(Math.random()*60))*1000; postTimes.push(new Date(cursor)); }
 
   // Extract keywords from title+body for contextual replies
   const src = title + " " + body;
@@ -162,10 +141,6 @@ function generateFallbackReplies(title, body, count) {
   const usedTexts = new Set();
 
   for (let i = 0; i < count; i++) {
-    const sec = Math.min(59, now.getSeconds() + i * 3 + Math.floor(Math.random() * 15));
-    const h = String(now.getHours()).padStart(2,"0");
-    const m = String(now.getMinutes()).padStart(2,"0");
-    const s = String(sec).padStart(2,"0");
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let id = ""; for (let j = 0; j < 9; j++) id += chars[Math.floor(Math.random() * chars.length)];
 
@@ -218,7 +193,7 @@ function generateFallbackReplies(title, body, count) {
     replies.push({
       number: i + 2,
       name: postName,
-      date: `${base} ${h}時${m}分${s}秒`,
+      date: fmtDate(postTimes[i]),
       id: id,
       body: text
     });
@@ -258,56 +233,45 @@ app.post("/api/bbs/continue", async (req, res) => {
 // Save thread log
 app.post("/api/bbs/logs", (req, res) => {
   const { title, body, replies, isPublic, isSafetyMode, isSensitive } = req.body;
-  const id = nextId++;
-  threads.set(id, { title, body, replies: replies || [], isPublic: !!isPublic, isSafetyMode, isSensitive, createdAt: new Date().toISOString() });
+  const id = store.saveThread({ title, body, replies: replies || [], isPublic: !!isPublic, isSafetyMode, isSensitive });
   res.json({ id });
 });
 
 // Get logs
 app.get("/api/bbs/logs", (req, res) => {
-  const logs = [];
-  threads.forEach((v, k) => logs.push({ id: k, ...v }));
-  logs.sort((a, b) => b.id - a.id);
-  res.json(logs);
+  res.json(store.getThreads());
 });
 
 // Get single log
 app.get("/api/bbs/logs/:id", (req, res) => {
-  const t = threads.get(Number(req.params.id));
+  const t = store.getThread(Number(req.params.id));
   if (!t) return res.status(404).json({ error: "not found" });
-  res.json({ id: Number(req.params.id), ...t });
+  res.json(t);
 });
 
 // Delete log
 app.delete("/api/bbs/logs/:id", (req, res) => {
-  threads.delete(Number(req.params.id));
+  store.deleteThread(Number(req.params.id));
   res.json({ ok: true });
 });
 
 // Toggle visibility
 app.patch("/api/bbs/logs/:id/visibility", (req, res) => {
-  const t = threads.get(Number(req.params.id));
-  if (!t) return res.status(404).json({ error: "not found" });
-  t.isPublic = req.body.isPublic;
+  const id = Number(req.params.id);
+  if (!store.getThread(id)) return res.status(404).json({ error: "not found" });
+  store.setVisibility(id, !!req.body.isPublic);
   res.json({ ok: true });
 });
 
 // Public threads
 app.get("/api/bbs/public-threads", (req, res) => {
-  const q = (req.query.q || "").toLowerCase();
-  const list = [];
-  threads.forEach((v, k) => {
-    if (v.isPublic && (!q || v.title.toLowerCase().includes(q)))
-      list.push({ id: k, title: v.title, body: v.body, replies: v.replies, createdAt: v.createdAt });
-  });
-  list.sort((a, b) => b.id - a.id);
-  res.json({ threads: list });
+  res.json({ threads: store.getPublicThreads(req.query.q || "") });
 });
 
 app.get("/api/bbs/public-threads/:id", (req, res) => {
-  const t = threads.get(Number(req.params.id));
+  const t = store.getThread(Number(req.params.id));
   if (!t || !t.isPublic) return res.status(404).json({ error: "not found" });
-  res.json({ id: Number(req.params.id), ...t });
+  res.json(t);
 });
 
 // Config

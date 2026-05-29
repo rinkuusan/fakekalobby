@@ -167,18 +167,54 @@ function generateReplies(title, body) {
   return replies;
 }
 
-// ===== In-memory store (per-isolate, ephemeral) =====
+// ===== In-memory store (per-isolate, ephemeral fallback) =====
 const threads = new Map();
 let nextId = 1;
 let totalCost = 12345;
 
+// ===== Storage backends =====
+// Production: bind a Cloudflare D1 database as `DB` in wrangler.toml (schema in schema.sql).
+// Without a binding the Worker falls back to the ephemeral in-memory Map above.
+const rowTo = (r) => ({
+  id: r.id, title: r.title, body: r.body,
+  replies: JSON.parse(r.replies || "[]"),
+  isPublic: !!r.isPublic, isSafetyMode: !!r.isSafetyMode, isSensitive: !!r.isSensitive,
+  createdAt: r.createdAt,
+});
+function d1Store(db) {
+  return {
+    async save(t) {
+      const r = await db.prepare("INSERT INTO threads (title,body,replies,isPublic,isSafetyMode,isSensitive,createdAt) VALUES (?,?,?,?,?,?,?)")
+        .bind(t.title, t.body, JSON.stringify(t.replies || []), t.isPublic ? 1 : 0, t.isSafetyMode ? 1 : 0, t.isSensitive ? 1 : 0, new Date().toISOString())
+        .run();
+      return r.meta.last_row_id;
+    },
+    async all() { const { results } = await db.prepare("SELECT * FROM threads ORDER BY id DESC").all(); return results.map(rowTo); },
+    async pub(q) {
+      const { results } = q
+        ? await db.prepare("SELECT * FROM threads WHERE isPublic=1 AND lower(title) LIKE ? ORDER BY id DESC").bind("%" + q.toLowerCase() + "%").all()
+        : await db.prepare("SELECT * FROM threads WHERE isPublic=1 ORDER BY id DESC").all();
+      return results.map(rowTo);
+    },
+  };
+}
+function memStore() {
+  return {
+    async save(t) { const id = nextId++; threads.set(id, { ...t, replies: t.replies || [], createdAt: new Date().toISOString() }); return id; },
+    async all() { const a = []; threads.forEach((v, k) => a.push({ id: k, ...v })); return a.sort((x, y) => y.id - x.id); },
+    async pub(q) { const a = []; threads.forEach((v, k) => { if (v.isPublic && (!q || v.title.toLowerCase().includes(q.toLowerCase()))) a.push({ id: k, ...v }); }); return a.sort((x, y) => y.id - x.id); },
+  };
+}
+
 // ===== Router =====
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
+
+    const store = env && env.DB ? d1Store(env.DB) : memStore();
 
     // Generate
     if (path === "/api/bbs/generate" && request.method === "POST") {
@@ -198,24 +234,18 @@ export default {
     // Save log
     if (path === "/api/bbs/logs" && request.method === "POST") {
       const data = await request.json();
-      const id = nextId++;
-      threads.set(id, { ...data, createdAt: new Date().toISOString() });
+      const id = await store.save(data);
       return json({ id });
     }
 
     // Get logs
     if (path === "/api/bbs/logs" && request.method === "GET") {
-      const logs = [];
-      threads.forEach((v, k) => logs.push({ id: k, ...v }));
-      return json(logs.sort((a, b) => b.id - a.id));
+      return json(await store.all());
     }
 
     // Public threads
     if (path === "/api/bbs/public-threads" && request.method === "GET") {
-      const q = (url.searchParams.get("q") || "").toLowerCase();
-      const list = [];
-      threads.forEach((v, k) => { if (v.isPublic && (!q || v.title.toLowerCase().includes(q))) list.push({ id: k, ...v }); });
-      return json({ threads: list.sort((a, b) => b.id - a.id) });
+      return json({ threads: await store.pub(url.searchParams.get("q") || "") });
     }
 
     // Config

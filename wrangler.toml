@@ -1,3 +1,15 @@
 name = "fakekalobby-api"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+
+# ===== Persistent logs on an external server (Cloudflare D1) =====
+# Without this binding the Worker uses ephemeral in-memory storage (logs reset on redeploy/idle).
+# To enable durable external storage:
+#   1) wrangler d1 create fakekalobby-db
+#   2) copy the printed database_id into the block below and uncomment it
+#   3) wrangler d1 execute fakekalobby-db --remote --file=./schema.sql
+#   4) wrangler deploy
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "fakekalobby-db"
+# database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
